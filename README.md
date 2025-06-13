@@ -15,4 +15,4 @@ REDIS_URL=redis://localhost:6666 cargo run
 curl http://localhost:8000/api/openapi/json | jq '.data' > openapi.json
 ```
 3. Load OpenAPI documentation in a UI (https://redocly.github.io/redoc/)
-
+4. Interact with APIs
