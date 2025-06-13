@@ -1,0 +1,4 @@
+[tasks.dev-backend]
+workspace = false
+command = "cargo"
+args = ["watch", "-w", "./", "-x", "run"]
