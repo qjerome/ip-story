@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes:
+    emerald --default,
+    dracula;
+}
+
+#app {
+  margin: 0 auto;
+  max-width: 1280px;
+}
