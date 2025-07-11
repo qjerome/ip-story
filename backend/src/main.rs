@@ -327,11 +327,11 @@ async fn ip_update_entry(
 #[utoipa::path(
     context_path = API_MOUNTPOINT,
     params(
-        ("ip", description = "The IP address"),
-        ("kind", description = "The kind of data to search for"),
-        ("limit", description = "The maximum number of entries to return"),
-        ("offset", description = "The number of entries to skip"),
-        ("order", description = "The order in which to return the entries")
+        ("ip" = String, Path, description = "The IP address"),
+        ("kind" = Option<DataKind>, Query, description = "The kind of data to search for"),
+        ("limit" = Option<usize>, Query, description = "The maximum number of entries to return"),
+        ("offset" = Option<usize>, Query, description = "The number of entries to skip"),
+        ("order" = Option<SearchOrder>, Query, description = "The order in which to return the entries")
     ),
     responses(
         (status = 200, description = "Entries retrieved successfully", body = ApiResponse<Vec<Entry>>, content_type = "application/json"),
@@ -342,7 +342,7 @@ async fn ip_update_entry(
 #[get("/ip/<ip>/entry/search?<kind>&<offset>&<limit>&<order>")]
 async fn ip_search_entry(
     ip: IpAddr,
-    kind: DataKind,
+    kind: Option<DataKind>,
     limit: Option<usize>,
     offset: Option<usize>,
     order: Option<SearchOrder>,
@@ -363,7 +363,13 @@ async fn ip_search_entry(
 
     let hist: Vec<Entry> = iter
         // filter by kind
-        .filter(|(_, e)| e.data.kind() == kind)
+        .filter(|(_, e)| {
+            if let Some(kind) = &kind {
+                &e.data.kind() == kind
+            } else {
+                true
+            }
+        })
         // start at offset
         .skip(offset)
         // take only limit
