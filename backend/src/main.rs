@@ -69,6 +69,7 @@ pub enum Data {
 }
 
 #[derive(Debug, Serialize, Deserialize, FromFormField, ToSchema)]
+#[serde(rename_all = "kebab-case")]
 pub enum SearchOrder {
     Asc,
     Desc,
