@@ -259,15 +259,15 @@ async fn ip_add_entry(
     let mut entry = entry.0;
     // we must create a new uuid
     entry.uuid = Some(Uuid::new_v4());
-    let timestamp = entry.ctime.get_or_insert_with(|| Utc::now());
+    let timestamp = entry.ctime.get_or_insert_with(Utc::now);
 
-    if ipst.history.contains_key(&timestamp) {
+    if ipst.history.contains_key(timestamp) {
         return Err(api_error!(
             "an entry with this timestamp is already present"
         ));
     }
 
-    ipst.history.insert(timestamp.clone(), entry);
+    ipst.history.insert(*timestamp, entry);
 
     store_hip(ipst, &mut db)
         .inspect_err(|e| error!("failed to insert new ip: {e}"))
@@ -315,7 +315,7 @@ async fn ip_update_entry(
     };
 
     entry.mtime = Some(Utc::now());
-    ipst.history.insert(key.clone(), entry);
+    ipst.history.insert(*key, entry);
 
     store_hip(ipst, &mut db)
         .inspect_err(|e| error!("failed to insert new ip: {e}"))
