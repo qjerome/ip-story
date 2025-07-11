@@ -446,7 +446,10 @@ async fn openapi() -> ApiResult<utoipa::openapi::OpenApi> {
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(ip_new, ip_add_entry, ip_search_entry, ip_update_entry, ip_del_entry,))]
+#[openapi(
+    components(schemas(DataKind, SearchOrder)),
+    paths(ip_new, ip_add_entry, ip_search_entry, ip_update_entry, ip_del_entry,)
+)]
 struct ApiDoc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
