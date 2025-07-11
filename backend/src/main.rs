@@ -1,9 +1,12 @@
 #![deny(unused_imports)]
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     env,
+    ffi::OsStr,
     net::IpAddr,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -11,9 +14,10 @@ use api::{ApiData, ApiResult};
 use chrono::Utc;
 use redis::{Client, Commands, RedisError};
 use rocket::{
-    FromFormField, State, delete, error, get, post, put, request::FromParam, routes,
-    serde::json::Json,
+    FromFormField, State, delete, error, get, http::ContentType, post, put, request::FromParam,
+    routes, serde::json::Json,
 };
+use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use url::Url;
@@ -129,7 +133,7 @@ impl<'de> Deserialize<'de> for Tag {
     where
         D: serde::Deserializer<'de>,
     {
-        Ok(Tag(String::deserialize(deserializer)?.into()))
+        Ok(Tag(String::deserialize(deserializer)?))
     }
 }
 
@@ -323,11 +327,11 @@ async fn ip_update_entry(
 #[utoipa::path(
     context_path = API_MOUNTPOINT,
     params(
-        ("ip" = String, Path, description = "The IP address"),
-        ("kind" = DataKind, Query, description = "The kind of data to search for"),
-        ("limit" = Option<usize>, Query, description = "The maximum number of entries to return"),
-        ("offset" = Option<usize>, Query, description = "The number of entries to skip"),
-        ("order" = Option<SearchOrder>, Query, description = "The order in which to return the entries")
+        ("ip", description = "The IP address"),
+        ("kind", description = "The kind of data to search for"),
+        ("limit", description = "The maximum number of entries to return"),
+        ("offset", description = "The number of entries to skip"),
+        ("order", description = "The order in which to return the entries")
     ),
     responses(
         (status = 200, description = "Entries retrieved successfully", body = ApiResponse<Vec<Entry>>, content_type = "application/json"),
@@ -405,6 +409,31 @@ async fn ip_del_entry(
     Ok(ApiData::from(ipst.history.remove(&key)))
 }
 
+#[derive(Embed)]
+#[folder = "../target/frontend"]
+struct FrontendAssets;
+
+// Catch-all route to serve index.html for Vue routes
+#[get("/<path..>")]
+async fn serve_assets(path: PathBuf) -> Option<(ContentType, Cow<'static, [u8]>)> {
+    let filename = path.display().to_string();
+
+    // if the asset exist we serve it
+    if let Some(asset) = FrontendAssets::get(&filename) {
+        let content_type = path
+            .extension()
+            .and_then(OsStr::to_str)
+            .and_then(ContentType::from_extension)
+            .unwrap_or(ContentType::Bytes);
+        Some((content_type, asset.data))
+    } else {
+        // if the asset doesn't exist we serve index.html
+        // we delegate page routing to Vue
+        let index = FrontendAssets::get("index.html")?;
+        Some((ContentType::HTML, index.data))
+    }
+}
+
 #[get("/openapi/json")]
 async fn openapi() -> ApiResult<utoipa::openapi::OpenApi> {
     Ok(ApiData::Some(ApiDoc::openapi()))
@@ -412,13 +441,13 @@ async fn openapi() -> ApiResult<utoipa::openapi::OpenApi> {
 
 #[derive(OpenApi)]
 #[openapi(paths(ip_new, ip_add_entry, ip_search_entry, ip_update_entry, ip_del_entry,))]
-
 struct ApiDoc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let db = connect_to_redis()?;
 
     rocket::build()
+        .mount("/", routes![serve_assets])
         .mount(
             API_MOUNTPOINT,
             routes![

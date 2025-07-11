@@ -8,6 +8,8 @@ export default defineConfig({
   build: {
     outDir: process.env.OUTPUT_DIR || "dist",
     emptyOutDir: true,
+    // set this param not to have warning
+    //chunkSizeWarningLimit: 1500,
   },
   plugins: [vue(), tailwindcss()],
   resolve: {
