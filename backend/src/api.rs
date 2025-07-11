@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 #[macro_export]
 macro_rules! api_error {
     ($msg: expr) => {
-        crate::api::ApiError::msg(format!("{}:{} {}", file!(), line!(), $msg))
+        $crate::api::ApiError::msg(format!("{}:{} {}", file!(), line!(), $msg))
     };
 }
 
