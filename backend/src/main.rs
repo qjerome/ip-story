@@ -1,9 +1,12 @@
 #![deny(unused_imports)]
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     env,
+    ffi::OsStr,
     net::IpAddr,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -11,9 +14,10 @@ use api::{ApiData, ApiResult};
 use chrono::Utc;
 use redis::{Client, Commands, RedisError};
 use rocket::{
-    FromFormField, State, delete, error, get, post, put, request::FromParam, routes,
-    serde::json::Json,
+    FromFormField, State, delete, error, get, http::ContentType, post, put, request::FromParam,
+    routes, serde::json::Json,
 };
+use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use url::Url;
@@ -65,6 +69,7 @@ pub enum Data {
 }
 
 #[derive(Debug, Serialize, Deserialize, FromFormField, ToSchema)]
+#[serde(rename_all = "kebab-case")]
 pub enum SearchOrder {
     Asc,
     Desc,
@@ -129,7 +134,7 @@ impl<'de> Deserialize<'de> for Tag {
     where
         D: serde::Deserializer<'de>,
     {
-        Ok(Tag(String::deserialize(deserializer)?.into()))
+        Ok(Tag(String::deserialize(deserializer)?))
     }
 }
 
@@ -255,15 +260,15 @@ async fn ip_add_entry(
     let mut entry = entry.0;
     // we must create a new uuid
     entry.uuid = Some(Uuid::new_v4());
-    let timestamp = entry.ctime.get_or_insert_with(|| Utc::now());
+    let timestamp = entry.ctime.get_or_insert_with(Utc::now);
 
-    if ipst.history.contains_key(&timestamp) {
+    if ipst.history.contains_key(timestamp) {
         return Err(api_error!(
             "an entry with this timestamp is already present"
         ));
     }
 
-    ipst.history.insert(timestamp.clone(), entry);
+    ipst.history.insert(*timestamp, entry);
 
     store_hip(ipst, &mut db)
         .inspect_err(|e| error!("failed to insert new ip: {e}"))
@@ -311,7 +316,7 @@ async fn ip_update_entry(
     };
 
     entry.mtime = Some(Utc::now());
-    ipst.history.insert(key.clone(), entry);
+    ipst.history.insert(*key, entry);
 
     store_hip(ipst, &mut db)
         .inspect_err(|e| error!("failed to insert new ip: {e}"))
@@ -324,7 +329,7 @@ async fn ip_update_entry(
     context_path = API_MOUNTPOINT,
     params(
         ("ip" = String, Path, description = "The IP address"),
-        ("kind" = DataKind, Query, description = "The kind of data to search for"),
+        ("kind" = Option<DataKind>, Query, description = "The kind of data to search for"),
         ("limit" = Option<usize>, Query, description = "The maximum number of entries to return"),
         ("offset" = Option<usize>, Query, description = "The number of entries to skip"),
         ("order" = Option<SearchOrder>, Query, description = "The order in which to return the entries")
@@ -338,7 +343,7 @@ async fn ip_update_entry(
 #[get("/ip/<ip>/entry/search?<kind>&<offset>&<limit>&<order>")]
 async fn ip_search_entry(
     ip: IpAddr,
-    kind: DataKind,
+    kind: Option<DataKind>,
     limit: Option<usize>,
     offset: Option<usize>,
     order: Option<SearchOrder>,
@@ -359,7 +364,13 @@ async fn ip_search_entry(
 
     let hist: Vec<Entry> = iter
         // filter by kind
-        .filter(|(_, e)| e.data.kind() == kind)
+        .filter(|(_, e)| {
+            if let Some(kind) = &kind {
+                &e.data.kind() == kind
+            } else {
+                true
+            }
+        })
         // start at offset
         .skip(offset)
         // take only limit
@@ -405,20 +416,48 @@ async fn ip_del_entry(
     Ok(ApiData::from(ipst.history.remove(&key)))
 }
 
+#[derive(Embed)]
+#[folder = "../target/frontend"]
+struct FrontendAssets;
+
+// Catch-all route to serve index.html for Vue routes
+#[get("/<path..>")]
+async fn serve_assets(path: PathBuf) -> Option<(ContentType, Cow<'static, [u8]>)> {
+    let filename = path.display().to_string();
+
+    // if the asset exist we serve it
+    if let Some(asset) = FrontendAssets::get(&filename) {
+        let content_type = path
+            .extension()
+            .and_then(OsStr::to_str)
+            .and_then(ContentType::from_extension)
+            .unwrap_or(ContentType::Bytes);
+        Some((content_type, asset.data))
+    } else {
+        // if the asset doesn't exist we serve index.html
+        // we delegate page routing to Vue
+        let index = FrontendAssets::get("index.html")?;
+        Some((ContentType::HTML, index.data))
+    }
+}
+
 #[get("/openapi/json")]
 async fn openapi() -> ApiResult<utoipa::openapi::OpenApi> {
     Ok(ApiData::Some(ApiDoc::openapi()))
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(ip_new, ip_add_entry, ip_search_entry, ip_update_entry, ip_del_entry,))]
-
+#[openapi(
+    components(schemas(DataKind, SearchOrder)),
+    paths(ip_new, ip_add_entry, ip_search_entry, ip_update_entry, ip_del_entry,)
+)]
 struct ApiDoc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let db = connect_to_redis()?;
 
     rocket::build()
+        .mount("/", routes![serve_assets])
         .mount(
             API_MOUNTPOINT,
             routes![

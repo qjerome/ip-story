@@ -1,0 +1,31 @@
+[package]
+name = "ip-story"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+chrono = { version = "0.4.41", features = ["serde"] }
+log = "0.4.27"
+redis = "0.31.0"
+rocket = { version = "0.5.1", features = ["json", "uuid"] }
+rust-embed = { version = "8.7.2", features = ["compression", "rocket"] }
+serde = { version = "1.0.219", features = ["serde_derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tokio = "1.45.1"
+url = { version = "2.5.4", features = ["serde"] }
+utoipa = { version = "5.3.1", features = [
+    "rocket_extras",
+    "uuid",
+    "chrono",
+    "url",
+] }
+uuid = { version = "1.17.0", features = ["serde", "v4"] }
+
+[profile.release]
+lto = true
+opt-level = "z"
+codegen-units = 1
+strip = true
+debug = false
